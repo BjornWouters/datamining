@@ -72,8 +72,6 @@ class PredictMood:
 
     def get_change(self, attribute_list, change):
         mean = np.mean(attribute_list)
-        print(mean)
-        print(change)
         if change > mean:
             return 'higher'
         elif change < mean:

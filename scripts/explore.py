@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import csv
 import sys
+import datetime
 from scipy.stats.stats import pearsonr
 # local imports
 from scripts.prediction import PredictMood
@@ -12,11 +13,12 @@ mood_predictor = PredictMood()
 # Processing the data
 dataset = pd.read_csv('../data/dataset_mood_smartphone.csv', header=0)
 # Convert to usable datetime
-dataset.time = pd.to_datetime(dataset['time'], format='%Y-%m-%d %H:%M:%S.%f')
-
+dataset.time = pd.to_datetime(dataset['time'], format='%Y-%m-%d')
 patients = dataset.id.unique()
-first_patient = dataset.ix[dataset['id'] == patients[7]].ix[dataset['variable'] == 'mood']
+first_patient = dataset.ix[dataset['id'] == patients[0]].ix[dataset['variable'] == 'mood']
 patient_dict = {patient: list() for patient in patients}
+
+my_patient = 5
 
 ########################################################################################################################
 # Explore the fluctuation of a patient
@@ -54,7 +56,8 @@ if calculate_fluctuation:
     mood_list = list()
     positive_change = list()
     negative_change = list()
-    patient = dataset.ix[dataset['id'] == patients[0]]
+    mood_days = list()
+    patient = dataset.ix[dataset['id'] == patients[my_patient]]
     mood = patient.ix[dataset['variable'] == 'mood']
     for i, timestamp in enumerate(mood.time):
         previous_mood = mood.iloc[i].value
@@ -68,6 +71,7 @@ if calculate_fluctuation:
             if not previous_mood:
                 previous_mood = np.mean(mood_list)
             else:
+                mood_days.append((day, timestamp.month))
                 change = previous_mood - np.mean(mood_list)
                 previous_mood = np.mean(mood_list)
                 mood_list = list()
@@ -90,44 +94,67 @@ if calculate_fluctuation:
 # Find correlated attributes
 find_attributes = True
 if find_attributes:
-    activity = dataset.ix[dataset['id'] == patients[0]].ix[dataset['variable'] == 'activity']
+    all_attributes = [
+        'activity',
+        'screen',
+        # 'appCat.social',
+        # 'appCat.builtin',
+        # 'appCat.communication',
+    ]
+    for variable in all_attributes:
+        variable = variable
+        attribute = dataset.ix[dataset['id'] == patients[my_patient]].ix[dataset['variable'] == variable]
+        total_attribute = list()
+        previous_day = None
+        attribute_list = list()
+        count_day = 0
+        for i, timestamp in enumerate(mood_days):
+            current_attribute = attribute.iloc[i].value
+            myDate_1 = "2014-{}-{}".format(
+                timestamp[1],
+                timestamp[0]
+            )
+            myDate_2 = "2014-{}-{!s}".format(
+                timestamp[1],
+                timestamp[0]+1
+            )
 
-    total_activity = list()
-    previous_day = None
-    activity_list = list()
-    count_day = 0
-    for i, timestamp in enumerate(activity.time):
-        current_activity = activity.iloc[i].value
-        if not previous_day:
-            previous_day = timestamp.day
-            activity_list.append(current_activity)
-            continue
-        if timestamp.day != previous_day:
-            count_day += 1
-            daily_activity = np.mean(activity_list)
-            total_activity.append(daily_activity)
-            activity_list = list()
-            activity_list.append(current_activity)
-        else:
-            activity_list.append(current_activity)
-        previous_day = timestamp.day
+            try:
+                result = attribute.loc[attribute.time >= myDate_1].loc[attribute.time < myDate_2]
+            except ValueError:
+                myDate_1 = "2014-{}-{!s}".format(
+                    timestamp[1],
+                    timestamp[0]-1
+                )
+                myDate_2 = "2014-{!s}-{}".format(
+                    timestamp[1]+1,
+                    '01'
+                )
 
-    print(pearsonr(mood_predictor.get_mood_per_day(), total_activity))
-    # plt.plot(range(len(total_activity)), total_activity, label='activity')
-    # plt.show()
-    mood_predictor.set_attribute('activity', total_activity)
+                result = attribute.loc[attribute.time >= myDate_1].loc[attribute.time < myDate_2]
+
+            if not result.empty:
+                    current_attribute = result.value.mean()
+                    total_attribute.append(current_attribute)
+            else:
+                total_attribute.append(0)
+        print(pearsonr(mood_predictor.get_mood_per_day(), total_attribute))
+        # plt.plot(range(len(total_attribute)), total_attribute, label='activity')
+        # plt.show()
+        mood_predictor.set_attribute(variable, total_attribute)
 ########################################################################################################################
 # Create learning file
 create_learning_file = True
 if create_learning_file:
-    with open('learning.txt', 'w') as output:
+    with open('learning.csv', 'w') as output:
         writer = csv.writer(output, delimiter=',',
                             quotechar='|', quoting=csv.QUOTE_MINIMAL)
-        writer.writerow(['activity', 'mood', 'mood_change'])
+
+        main_attributes = ['mood', 'mood_change']
+        writer.writerow(all_attributes + main_attributes)
+
         mood_list = mood_predictor.get_mood_per_day()
         attributes = mood_predictor.get_attributes()
-        activity = attributes['activity']
-
         for i, mood in enumerate(mood_list):
             if i != len(mood_list)-1:
                 next_mood = mood_list[i+1]
@@ -139,9 +166,13 @@ if create_learning_file:
                 else:
                     mood_change = 'worse'
 
-                activity_change = activity[i]
-                activity_class = mood_predictor.get_change(activity, activity_change)
-                writer.writerow([activity_class, mood, mood_change])
+                values = list()
+                for variable in all_attributes:
+                    attribute = mood_predictor.get_attributes()[variable]
+                    current_attribute = attribute[i]
+                    values.append(current_attribute)
+
+                writer.writerow(values + [mood, mood_change])
 ########################################################################################################################
 search_features = False
 if search_features:
