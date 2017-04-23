@@ -97,19 +97,24 @@ if find_attributes:
     all_attributes = [
         'activity',
         'screen',
-        # 'appCat.social',
-        # 'appCat.builtin',
-        # 'appCat.communication',
+        'circumplex.arousal',
+        'circumplex.valence',
+        'call',
+        'sms',
+        'appCat.social',
+        'appCat.builtin',
+        'appCat.communication',
     ]
     for variable in all_attributes:
         variable = variable
         attribute = dataset.ix[dataset['id'] == patients[my_patient]].ix[dataset['variable'] == variable]
+        if variable == 'call':
+            print(attribute)
         total_attribute = list()
         previous_day = None
         attribute_list = list()
         count_day = 0
         for i, timestamp in enumerate(mood_days):
-            current_attribute = attribute.iloc[i].value
             myDate_1 = "2014-{}-{}".format(
                 timestamp[1],
                 timestamp[0]
@@ -134,7 +139,10 @@ if find_attributes:
                 result = attribute.loc[attribute.time >= myDate_1].loc[attribute.time < myDate_2]
 
             if not result.empty:
-                    current_attribute = result.value.mean()
+                    if variable not in ['sms', 'call']:
+                        current_attribute = result.value.mean()
+                    else:
+                        current_attribute = result.value.sum()
                     total_attribute.append(current_attribute)
             else:
                 total_attribute.append(0)
@@ -172,7 +180,7 @@ if create_learning_file:
                     current_attribute = attribute[i]
                     values.append(current_attribute)
 
-                writer.writerow(values + [mood, mood_change])
+                writer.writerow(values + [mood, change])
 ########################################################################################################################
 search_features = False
 if search_features:
